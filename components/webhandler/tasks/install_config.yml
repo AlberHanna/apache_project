@@ -1,0 +1,55 @@
+---
+- name: Install essential packages
+  dnf:
+    name: 
+      - httpd
+      - mod_ssl
+      - python3-passlib
+    state: present
+
+- name: Configure SELinux for custom port
+  command: semanage port -a -t http_port_t -p tcp {{ selinux_tcp_port }}
+  ignore_errors: yes
+
+- name: Create main DocumentRoot
+  file:
+    path: "/var/www/{{ input_hostname }}"
+    state: directory
+    owner: "{{ server_user }}"
+    group: "{{ server_group }}"
+    mode: '0755'
+
+- name: Create secure directory
+  file:
+    path: "/var/www/{{ input_hostname }}/secure"
+    state: directory
+    owner: "{{ server_user }}"
+    group: "{{ server_group }}"
+    mode: '0755'
+
+- name: Generate htpasswd credentials
+  htpasswd:
+    path: "/etc/httpd/conf/.auth-{{ input_hostname }}"
+    name: "{{ item.username }}"
+    password: "{{ item.userpass }}"
+    owner: root
+    group: "{{ server_group }}"
+    mode: '0640'
+  loop: "{{ auth_users }}"
+
+- name: Deploy virtual host configuration
+  template:
+    src: vhost_template.j2
+    dest: "/etc/httpd/conf.d/{{ input_hostname }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart httpd
+
+- name: Create .htaccess for secure directory
+  template:
+    src: access_control.j2
+    dest: "/var/www/{{ input_hostname }}/secure/.htaccess"
+    owner: "{{ server_user }}"
+    group: "{{ server_group }}"
+    mode: '0644'
